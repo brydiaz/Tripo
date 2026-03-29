@@ -54,3 +54,21 @@ export function clearAllTrips() {
 
   localStorage.removeItem(STORAGE_KEY);
 }
+
+export function renameTripById(id: string, newTitle: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const currentTrips = getSavedTrips();
+  const updatedTrips = currentTrips.map((trip) =>
+    trip.id === id
+      ? {
+          ...trip,
+          title: newTitle,
+        }
+      : trip
+  );
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedTrips));
+}

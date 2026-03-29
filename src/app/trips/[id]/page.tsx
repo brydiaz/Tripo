@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { deleteTripById, getTripById } from "@/lib/trips";
+import { deleteTripById, getTripById, renameTripById } from "@/lib/trips";
 import { SavedTrip } from "@/types/trip";
 import TripDetailMapClient from "@/components/TripDetailMapClient";
 
@@ -51,6 +51,21 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
 
     deleteTripById(trip.id);
     router.push("/trips");
+  };
+
+  const handleRenameTrip = () => {
+    if (!trip) return;
+
+    const newTitle = window.prompt("Nuevo nombre para la ruta:", trip.title);
+    if (newTitle === null) return;
+
+    const trimmedTitle = newTitle.trim();
+    if (!trimmedTitle) return;
+
+    renameTripById(trip.id, trimmedTitle);
+
+    const updatedTrip = getTripById(trip.id);
+    setTrip(updatedTrip);
   };
 
   if (!tripId) {
@@ -134,12 +149,21 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
           </div>
         </div>
 
-        <button
-          onClick={handleDeleteTrip}
-          className="w-full rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-base font-semibold text-red-300 transition hover:bg-red-500/15"
-        >
-          Eliminar ruta
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleRenameTrip}
+            className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-base font-semibold text-white/85 transition hover:bg-white/10"
+          >
+            Renombrar
+          </button>
+
+          <button
+            onClick={handleDeleteTrip}
+            className="w-full rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-base font-semibold text-red-300 transition hover:bg-red-500/15"
+          >
+            Eliminar ruta
+          </button>
+        </div>
       </div>
     </main>
   );

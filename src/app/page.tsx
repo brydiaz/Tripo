@@ -1,3 +1,4 @@
+import Link from "next/link";
 import MapClient from "@/components/MapClient";
 
 export default function HomePage() {
@@ -12,8 +13,17 @@ export default function HomePage() {
             <p className="text-sm text-white/70">Tu ruta, tu historia</p>
           </div>
 
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1A1F26] text-lg shadow-lg">
-            📍
+          <div className="flex items-center gap-2">
+            <Link
+              href="/trips"
+              className="rounded-2xl bg-[#1A1F26] px-4 py-2 text-sm text-white/80"
+            >
+              Mis rutas
+            </Link>
+
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1A1F26] text-lg shadow-lg">
+              📍
+            </div>
           </div>
         </header>
 

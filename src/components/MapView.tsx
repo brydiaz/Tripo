@@ -9,7 +9,8 @@ import {
   TileLayer,
   useMap,
 } from "react-leaflet";
-import { saveTrip } from "@/lib/trips";
+import { saveTripToCloud } from "@/lib/trips-cloud";
+import { getCurrentUser } from "@/lib/auth";
 import { Position } from "@/types/trip";
 
 type MapViewProps = {
@@ -90,6 +91,7 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [tripTitle, setTripTitle] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const demoIndexRef = useRef(0);
 
@@ -271,23 +273,44 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
     setIsSaveModalOpen(true);
   };
 
-  const handleSaveTrip = () => {
+  const handleSaveTrip = async () => {
     const finalTitle = tripTitle.trim() || `Ruta ${new Date().toLocaleString()}`;
 
-    const trip = {
-      id: crypto.randomUUID(),
-      title: finalTitle,
-      createdAt: new Date().toISOString(),
-      durationMs: elapsedTime,
-      distanceMeters: distance,
-      avgSpeedKmh: speed * 3.6,
-      points: route,
-    };
+    try {
+      setIsSaving(true);
+      setSaveMessage("");
 
-    saveTrip(trip);
-    setIsSaveModalOpen(false);
-    setTripTitle("");
-    setSaveMessage("Ruta guardada correctamente.");
+      const user = await getCurrentUser();
+
+      if (!user) {
+        setSaveMessage("Inicia sesión para guardar rutas en la nube.");
+        setIsSaveModalOpen(false);
+        setTripTitle("");
+        return;
+      }
+
+      const trip = {
+        id: crypto.randomUUID(),
+        title: finalTitle,
+        createdAt: new Date().toISOString(),
+        durationMs: elapsedTime,
+        distanceMeters: distance,
+        avgSpeedKmh: speed * 3.6,
+        points: route,
+      };
+
+      await saveTripToCloud(trip);
+
+      setIsSaveModalOpen(false);
+      setTripTitle("");
+      setSaveMessage("Ruta guardada en la nube.");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo guardar la ruta.";
+      setSaveMessage(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancelSave = () => {
@@ -473,9 +496,10 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
 
               <button
                 onClick={handleSaveTrip}
-                className="rounded-2xl bg-[#2D9CDB] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#238ac7]"
+                disabled={isSaving}
+                className="rounded-2xl bg-[#2D9CDB] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#238ac7] disabled:opacity-60"
               >
-                Guardar ruta
+                {isSaving ? "Guardando..." : "Guardar ruta"}
               </button>
             </div>
           </div>

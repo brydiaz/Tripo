@@ -2,78 +2,99 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import {
-  clearAllTrips,
-  deleteTripById,
-  getSavedTrips,
-  renameTripById,
-} from "@/lib/trips";
 import TripPreview from "@/components/TripPreview";
 import Modal from "@/components/Modal";
 import { SavedTrip } from "@/types/trip";
+import {
+  deleteTripFromCloud,
+  getMyTripsFromCloud,
+  renameTripInCloud,
+} from "@/lib/trips-cloud";
+import { getCurrentUser } from "@/lib/auth";
+
+function formatDuration(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+
+  return `${hh}:${mm}:${ss}`;
+}
 
 export default function TripsPage() {
   const [trips, setTrips] = useState<SavedTrip[]>([]);
-
   const [selectedTrip, setSelectedTrip] = useState<SavedTrip | null>(null);
-
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [clearOpen, setClearOpen] = useState(false);
-
   const [newTitle, setNewTitle] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const loadTrips = async () => {
+    try {
+      setLoading(true);
+      setMessage("");
+
+      const user = await getCurrentUser();
+      if (!user) {
+        setTrips([]);
+        setMessage("Debes iniciar sesión para ver tus rutas.");
+        return;
+      }
+
+      const cloudTrips = await getMyTripsFromCloud();
+      setTrips(cloudTrips);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "No se pudieron cargar las rutas."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setTrips(getSavedTrips());
+    loadTrips();
   }, []);
 
-  const refresh = () => setTrips(getSavedTrips());
-
-  // -------- RENAME --------
   const openRename = (trip: SavedTrip) => {
     setSelectedTrip(trip);
     setNewTitle(trip.title);
     setRenameOpen(true);
   };
 
-  const confirmRename = () => {
+  const confirmRename = async () => {
     if (!selectedTrip) return;
-
     const trimmed = newTitle.trim();
     if (!trimmed) return;
 
-    renameTripById(selectedTrip.id, trimmed);
+    await renameTripInCloud(selectedTrip.id, trimmed);
     setRenameOpen(false);
     setSelectedTrip(null);
-    refresh();
+    await loadTrips();
   };
 
-  // -------- DELETE --------
   const openDelete = (trip: SavedTrip) => {
     setSelectedTrip(trip);
     setDeleteOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!selectedTrip) return;
 
-    deleteTripById(selectedTrip.id);
+    await deleteTripFromCloud(selectedTrip.id);
     setDeleteOpen(false);
     setSelectedTrip(null);
-    refresh();
-  };
-
-  // -------- CLEAR --------
-  const confirmClear = () => {
-    clearAllTrips();
-    setTrips([]);
-    setClearOpen(false);
+    await loadTrips();
   };
 
   return (
     <main className="min-h-screen bg-[#0B0F14] px-5 py-6 text-white">
       <div className="mx-auto flex max-w-md flex-col gap-4">
-        {/* HEADER */}
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-white/40">
@@ -82,56 +103,103 @@ export default function TripsPage() {
             <h1 className="text-3xl font-bold text-[#2D9CDB]">Mis rutas</h1>
           </div>
 
-          <div className="flex gap-2">
-            {trips.length > 0 && (
-              <button
-                onClick={() => setClearOpen(true)}
-                className="rounded-2xl bg-red-500/10 px-4 py-2 text-sm text-red-300"
-              >
-                Vaciar
-              </button>
-            )}
-
-            <Link href="/" className="rounded-2xl bg-white/5 px-4 py-2 text-sm">
-              Volver
-            </Link>
-          </div>
+          <Link href="/" className="rounded-2xl bg-white/5 px-4 py-2 text-sm">
+            Volver
+          </Link>
         </div>
 
-        {/* LISTA */}
-        {trips.map((trip) => (
-          <div
-            key={trip.id}
-            className="rounded-3xl bg-[#141a22] p-4 border border-white/10"
-          >
-            <Link href={`/trips/${trip.id}`}>
-              <h2 className="font-semibold">{trip.title}</h2>
-            </Link>
-
-            <div className="mt-3">
-              <TripPreview points={trip.points} height={90} />
-            </div>
-
-            <div className="flex justify-end gap-2 mt-3">
-              <button
-                onClick={() => openRename(trip)}
-                className="bg-white/5 px-3 py-2 rounded-xl text-sm"
-              >
-                Renombrar
-              </button>
-
-              <button
-                onClick={() => openDelete(trip)}
-                className="bg-red-500/10 px-3 py-2 rounded-xl text-sm text-red-300"
-              >
-                Eliminar
-              </button>
-            </div>
+        {message && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+            {message}
           </div>
-        ))}
+        )}
+
+        {loading ? (
+          <div className="rounded-[28px] border border-white/10 bg-[#141a22] p-6 text-white/60">
+            Cargando rutas...
+          </div>
+        ) : trips.length === 0 ? (
+          <div className="rounded-[28px] border border-white/10 bg-[#141a22] p-6 text-white/60">
+            No tienes rutas guardadas en la nube.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {trips.map((trip) => (
+              <div
+                key={trip.id}
+                className="rounded-[28px] border border-white/10 bg-[#141a22] p-4 shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
+              >
+                <div className="flex flex-col gap-4">
+                  <Link href={`/trips/${trip.id}`} className="block">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-white">{trip.title}</h2>
+                        <p className="mt-1 text-sm text-white/55">
+                          {new Date(trip.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-[#2D9CDB]/10 px-3 py-1 text-xs font-medium text-[#77c3ee]">
+                        {trip.points.length} puntos
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <TripPreview points={trip.points} height={96} />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-3 gap-3">
+                      <div className="rounded-2xl bg-white/5 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-white/45">
+                          Tiempo
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          {formatDuration(trip.durationMs)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white/5 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-white/45">
+                          Distancia
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          {(trip.distanceMeters / 1000).toFixed(2)} km
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white/5 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-white/45">
+                          Promedio
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-white">
+                          {trip.avgSpeedKmh.toFixed(1)} km/h
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => openRename(trip)}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/85 transition hover:bg-white/10"
+                    >
+                      Renombrar
+                    </button>
+
+                    <button
+                      onClick={() => openDelete(trip)}
+                      className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/15"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* MODAL RENOMBRAR */}
       <Modal
         isOpen={renameOpen}
         title="Renombrar ruta"
@@ -140,18 +208,16 @@ export default function TripsPage() {
         <input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
-          className="w-full bg-white/5 p-3 rounded-xl mt-3"
+          className="w-full rounded-xl bg-white/5 p-3 text-white"
         />
-
         <button
           onClick={confirmRename}
-          className="mt-4 w-full bg-[#2D9CDB] p-3 rounded-xl"
+          className="mt-4 w-full rounded-xl bg-[#2D9CDB] p-3"
         >
           Guardar cambios
         </button>
       </Modal>
 
-      {/* MODAL ELIMINAR */}
       <Modal
         isOpen={deleteOpen}
         title="Eliminar ruta"
@@ -160,24 +226,9 @@ export default function TripsPage() {
       >
         <button
           onClick={confirmDelete}
-          className="w-full bg-red-500/20 p-3 rounded-xl text-red-300"
+          className="w-full rounded-xl bg-red-500/20 p-3 text-red-300"
         >
           Eliminar
-        </button>
-      </Modal>
-
-      {/* MODAL CLEAR */}
-      <Modal
-        isOpen={clearOpen}
-        title="Vaciar historial"
-        description="Se eliminarán todas las rutas."
-        onClose={() => setClearOpen(false)}
-      >
-        <button
-          onClick={confirmClear}
-          className="w-full bg-red-500/20 p-3 rounded-xl text-red-300"
-        >
-          Borrar todo
         </button>
       </Modal>
     </main>

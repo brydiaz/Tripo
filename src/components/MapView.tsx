@@ -87,6 +87,10 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
   const [distance, setDistance] = useState(0);
   const [speed, setSpeed] = useState(0);
 
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [tripTitle, setTripTitle] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
+
   const demoIndexRef = useRef(0);
 
   const defaultCenter: Position = [9.9281, -84.0907];
@@ -257,17 +261,22 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
       setElapsedTime(0);
       setSpeed(0);
       setStartTime(Date.now());
+      setSaveMessage("");
       setIsRecording(true);
       return;
     }
 
     setIsRecording(false);
+    setTripTitle(`Ruta ${new Date().toLocaleString()}`);
+    setIsSaveModalOpen(true);
+  };
 
-    const title = window.prompt("Nombre de la ruta:", `Ruta ${new Date().toLocaleString()}`);
+  const handleSaveTrip = () => {
+    const finalTitle = tripTitle.trim() || `Ruta ${new Date().toLocaleString()}`;
 
     const trip = {
       id: crypto.randomUUID(),
-      title: title?.trim() || `Ruta ${new Date().toLocaleString()}`,
+      title: finalTitle,
       createdAt: new Date().toISOString(),
       durationMs: elapsedTime,
       distanceMeters: distance,
@@ -276,7 +285,14 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
     };
 
     saveTrip(trip);
-    alert("Ruta guardada correctamente.");
+    setIsSaveModalOpen(false);
+    setTripTitle("");
+    setSaveMessage("Ruta guardada correctamente.");
+  };
+
+  const handleCancelSave = () => {
+    setIsSaveModalOpen(false);
+    setTripTitle("");
   };
 
   const handleToggleDemoMode = () => {
@@ -287,11 +303,14 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
     setSpeed(0);
     setStartTime(null);
     setError("");
+    setSaveMessage("");
+    setIsSaveModalOpen(false);
+    setTripTitle("");
     setIsDemoMode((prev) => !prev);
   };
 
   return (
-    <div style={{ height: "100%", width: "100%", position: "relative" }}>
+    <div className="relative h-full w-full">
       <MapContainer
         center={currentCenter}
         zoom={zoom}
@@ -320,113 +339,148 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         )}
       </MapContainer>
 
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[900] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="pointer-events-auto rounded-2xl border border-white/10 bg-black/45 px-4 py-3 backdrop-blur-md shadow-[0_12px_30px_rgba(0,0,0,0.28)]">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">
+              Estado
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  isRecording
+                    ? "bg-[#27AE60] shadow-[0_0_12px_rgba(39,174,96,0.8)]"
+                    : isDemoMode
+                    ? "bg-[#f59e0b] shadow-[0_0_12px_rgba(245,158,11,0.8)]"
+                    : "bg-[#2D9CDB] shadow-[0_0_12px_rgba(45,156,219,0.8)]"
+                }`}
+              />
+              <p className="text-sm font-medium text-white">
+                {isRecording
+                  ? "Grabando recorrido"
+                  : isDemoMode
+                  ? "Modo demo activo"
+                  : "GPS activo"}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleToggleDemoMode}
+            className={`pointer-events-auto rounded-2xl border px-4 py-3 text-sm font-semibold backdrop-blur-md transition ${
+              isDemoMode
+                ? "border-[#f59e0b]/30 bg-[#f59e0b]/20 text-[#ffd08a]"
+                : "border-white/10 bg-black/45 text-white/85 hover:bg-black/55"
+            }`}
+          >
+            {isDemoMode ? "Desactivar demo" : "Modo demo"}
+          </button>
+        </div>
+      </div>
+
       {error && (
-        <div
-          style={{
-            position: "absolute",
-            top: 16,
-            left: 16,
-            right: 16,
-            zIndex: 1000,
-            background: "rgba(0,0,0,0.75)",
-            color: "white",
-            padding: "10px 14px",
-            borderRadius: "12px",
-            fontSize: "14px",
-          }}
-        >
+        <div className="absolute left-4 right-4 top-24 z-[950] rounded-2xl border border-red-400/20 bg-red-500/15 px-4 py-3 text-sm text-red-200 backdrop-blur-md">
           {error}
         </div>
       )}
 
-      <div
-        style={{
-          position: "absolute",
-          top: 16,
-          right: 16,
-          zIndex: 1000,
-          display: "flex",
-          gap: "10px",
-        }}
-      >
-        <button
-          onClick={handleToggleDemoMode}
-          style={{
-            background: isDemoMode ? "#f59e0b" : "rgba(0,0,0,0.75)",
-            color: "white",
-            padding: "10px 14px",
-            borderRadius: "12px",
-            border: "none",
-            fontWeight: "bold",
-            cursor: "pointer",
-          }}
-        >
-          {isDemoMode ? "Desactivar demo" : "Modo demo"}
-        </button>
+      {saveMessage && (
+        <div className="absolute left-4 right-4 top-24 z-[950] rounded-2xl border border-emerald-400/20 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-200 backdrop-blur-md">
+          {saveMessage}
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 z-[900] p-4">
+        <div className="rounded-[28px] border border-white/10 bg-black/45 p-4 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-white/6 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-white/45">
+                Tiempo
+              </p>
+              <p className="mt-2 text-sm font-semibold text-white">
+                {formatElapsedTime(elapsedTime)}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/6 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-white/45">
+                Distancia
+              </p>
+              <p className="mt-2 text-sm font-semibold text-white">
+                {(distance / 1000).toFixed(2)} km
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/6 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-white/45">
+                Velocidad
+              </p>
+              <p className="mt-2 text-sm font-semibold text-white">
+                {(speed * 3.6).toFixed(1)} km/h
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleToggleRecording}
+            className={`mt-4 w-full rounded-2xl px-5 py-4 text-base font-semibold text-white shadow-[0_12px_30px_rgba(0,0,0,0.25)] transition ${
+              isRecording
+                ? "bg-[#27AE60] hover:bg-[#229954]"
+                : "bg-[#2D9CDB] hover:bg-[#238ac7]"
+            }`}
+          >
+            {isRecording ? "Detener grabación" : "Iniciar grabación"}
+          </button>
+
+          <div className="mt-3 flex items-center justify-between text-[11px] text-white/40">
+            <span>secure: {String(secureInfo.secure)}</span>
+            <span>geo: {String(secureInfo.geo)}</span>
+            <span>demo: {String(isDemoMode)}</span>
+            <span>puntos: {route.length}</span>
+          </div>
+        </div>
       </div>
 
-      <div
-        style={{
-          position: "absolute",
-          bottom: 140,
-          left: 10,
-          zIndex: 999,
-          background: "rgba(0,0,0,0.85)",
-          color: "white",
-          padding: "12px",
-          borderRadius: "10px",
-          fontSize: "13px",
-          lineHeight: 1.7,
-          minWidth: "150px",
-        }}
-      >
-        <div>⏱ {formatElapsedTime(elapsedTime)}</div>
-        <div>📏 {(distance / 1000).toFixed(2)} km</div>
-        <div>⚡ {(speed * 3.6).toFixed(1)} km/h</div>
-      </div>
+      {isSaveModalOpen && (
+        <div className="absolute inset-0 z-[1200] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-[#141a22] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/40">
+              Guardar ruta
+            </p>
+            <h2 className="mt-2 text-2xl font-bold text-white">
+              Nombre del recorrido
+            </h2>
+            <p className="mt-2 text-sm text-white/60">
+              Asigna un nombre para encontrar esta ruta más fácilmente después.
+            </p>
 
-      <button
-        onClick={handleToggleRecording}
-        style={{
-          position: "absolute",
-          bottom: 20,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 1000,
-          background: isRecording ? "#27AE60" : "#2D9CDB",
-          color: "white",
-          padding: "14px 20px",
-          borderRadius: "20px",
-          border: "none",
-          fontWeight: "bold",
-          fontSize: "16px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-          cursor: "pointer",
-        }}
-      >
-        {isRecording ? "Detener grabación" : "Iniciar grabación"}
-      </button>
+            <input
+              type="text"
+              value={tripTitle}
+              onChange={(e) => setTripTitle(e.target.value)}
+              placeholder="Ej. Ruta a Cartago"
+              className="mt-4 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#2D9CDB]/50"
+              autoFocus
+            />
 
-      <div
-        style={{
-          position: "absolute",
-          bottom: 80,
-          left: 10,
-          zIndex: 999,
-          background: "rgba(0,0,0,0.8)",
-          color: "white",
-          padding: "10px",
-          borderRadius: "8px",
-          fontSize: "12px",
-          lineHeight: 1.5,
-        }}
-      >
-        <div>secure: {String(secureInfo.secure)}</div>
-        <div>geo: {String(secureInfo.geo)}</div>
-        <div>demo: {String(isDemoMode)}</div>
-        <div>grabando: {String(isRecording)}</div>
-        <div>puntos: {route.length}</div>
-      </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                onClick={handleCancelSave}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/80 transition hover:bg-white/10"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleSaveTrip}
+                className="rounded-2xl bg-[#2D9CDB] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#238ac7]"
+              >
+                Guardar ruta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

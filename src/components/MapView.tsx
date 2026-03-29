@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  MapContainer,
-  TileLayer,
   CircleMarker,
+  MapContainer,
   Popup,
+  Polyline,
+  TileLayer,
   useMap,
 } from "react-leaflet";
 
@@ -27,7 +28,12 @@ function RecenterMap({ center }: { center: Position }) {
 
 export default function MapView({ zoom = 16 }: MapViewProps) {
   const [position, setPosition] = useState<Position | null>(null);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [route, setRoute] = useState<Position[]>([]);
+
+  const defaultCenter: Position = [9.9281, -84.0907];
+  const currentCenter = position ?? defaultCenter;
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -37,8 +43,26 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setPosition([pos.coords.latitude, pos.coords.longitude]);
+        const newPos: Position = [pos.coords.latitude, pos.coords.longitude];
+
+        setPosition(newPos);
         setError("");
+
+        if (isRecording) {
+          setRoute((prev) => {
+            const lastPoint = prev[prev.length - 1];
+
+            if (
+              lastPoint &&
+              lastPoint[0] === newPos[0] &&
+              lastPoint[1] === newPos[1]
+            ) {
+              return prev;
+            }
+
+            return [...prev, newPos];
+          });
+        }
       },
       () => {
         setError("No se pudo actualizar tu ubicación.");
@@ -53,10 +77,36 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
     return () => {
       navigator.geolocation.clearWatch(watchId);
     };
+  }, [isRecording]);
+
+  const secureInfo = useMemo(() => {
+    if (typeof window === "undefined") {
+      return {
+        secure: false,
+        geo: false,
+      };
+    }
+
+    return {
+      secure: window.isSecureContext,
+      geo: !!navigator.geolocation,
+    };
   }, []);
 
-  const defaultCenter: Position = [9.9281, -84.0907];
-  const currentCenter = position ?? defaultCenter;
+  const handleToggleRecording = () => {
+    if (!isRecording) {
+      if (position) {
+        setRoute([position]);
+      } else {
+        setRoute([]);
+      }
+      setIsRecording(true);
+      return;
+    }
+
+    setIsRecording(false);
+    console.log("Ruta grabada:", route);
+  };
 
   return (
     <div style={{ height: "100%", width: "100%", position: "relative" }}>
@@ -80,6 +130,10 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         >
           <Popup>Tu ubicación actual</Popup>
         </CircleMarker>
+
+        {route.length > 1 && (
+          <Polyline positions={route} pathOptions={{ color: "#2D9CDB" }} />
+        )}
       </MapContainer>
 
       {error && (
@@ -97,11 +151,51 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
             fontSize: "14px",
           }}
         >
-            <div>secure: {String(window.isSecureContext)}</div>
-  <div>geo: {String(!!navigator.geolocation)}</div>
           {error}
         </div>
       )}
+
+      <button
+        onClick={handleToggleRecording}
+        style={{
+          position: "absolute",
+          bottom: 20,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1000,
+          background: isRecording ? "#27AE60" : "#2D9CDB",
+          color: "white",
+          padding: "14px 20px",
+          borderRadius: "20px",
+          border: "none",
+          fontWeight: "bold",
+          fontSize: "16px",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+          cursor: "pointer",
+        }}
+      >
+        {isRecording ? "Detener grabación" : "Iniciar grabación"}
+      </button>
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          left: 10,
+          zIndex: 999,
+          background: "rgba(0,0,0,0.8)",
+          color: "white",
+          padding: "10px",
+          borderRadius: "8px",
+          fontSize: "12px",
+          lineHeight: 1.5,
+        }}
+      >
+        <div>secure: {String(secureInfo.secure)}</div>
+        <div>geo: {String(secureInfo.geo)}</div>
+        <div>grabando: {String(isRecording)}</div>
+        <div>puntos: {route.length}</div>
+      </div>
     </div>
   );
 }

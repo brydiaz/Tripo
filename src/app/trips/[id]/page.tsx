@@ -128,7 +128,14 @@ export default function TripDetailPage({ params }: TripDetailPageProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
+          <Link
+            href={`/?followTripId=${trip.id}`}
+            className="rounded-2xl bg-[#2D9CDB] px-5 py-4 text-center text-base font-semibold text-white"
+          >
+            Seguir ruta
+          </Link>
+
           <button
             onClick={() => {
               setNewTitle(trip.title);

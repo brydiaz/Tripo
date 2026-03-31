@@ -58,7 +58,7 @@ export default function TripsPage() {
   };
 
   useEffect(() => {
-    loadTrips();
+    void loadTrips();
   }, []);
 
   const openRename = (trip: SavedTrip) => {
@@ -178,7 +178,14 @@ export default function TripsPage() {
                     </div>
                   </Link>
 
-                  <div className="flex justify-end gap-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Link
+                      href={`/?followTripId=${trip.id}`}
+                      className="rounded-2xl bg-[#2D9CDB] px-4 py-2 text-center text-sm font-medium text-white transition hover:bg-[#238ac7]"
+                    >
+                      Seguir ruta
+                    </Link>
+
                     <button
                       onClick={() => openRename(trip)}
                       className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/85 transition hover:bg-white/10"

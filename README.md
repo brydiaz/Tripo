@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tripo
 
-## Getting Started
+Tripo es una aplicación de seguimiento de rutas GPS con grabación, navegación y sincronización en la nube. Está construida con Next.js 16, React 19, Tailwind CSS y Leaflet.
 
-First, run the development server:
+## 🚀 Funcionalidades
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Grabación de rutas GPS en tiempo real.
+- Cálculo de distancia y velocidad instantánea.
+- Navegación paso a paso usando OpenRouteService.
+- Guardado local (`localStorage`) y en la nube (Supabase).
+- Migración de rutas locales a la nube.
+- Historial de rutas: ver, renombrar, eliminar, cargar y seguir rutas guardadas.
+- Mapa de detalle con trazo de ruta y vista escalada.
+
+## 📁 Estructura de archivos
+
+- `src/app/`
+  - `page.tsx`: Página principal con mapa y migración local→nube.
+  - `login/page.tsx`: Login y registro.
+  - `trips/page.tsx`: Listado de viajes y edición.
+  - `trips/[id]/page.tsx`: Detalle de viaje con mapa.
+- `src/components/`
+  - `MapView.tsx`: Lógica principal del mapa, grabación y navegación.
+  - `MapClient.tsx`: Carga dinámica de `MapView` sin SSR.
+  - `TripDetailMap.tsx` / `TripDetailMapClient.tsx`: Mapa del detalle de viaje.
+  - `TripPreview.tsx`: Vista previa de ruta en SVG.
+  - `Modal.tsx`: Componente modal reutilizable.
+  - `map/SearchBar.tsx`: Barra de búsqueda de destinos.
+  - `map/NavigationPanel.tsx`: Panel de navegación y estadísticas.
+  - `map/DevPanel.tsx`: Panel de herramientas de desarrollo.
+- `src/hooks/`
+  - `useUser.ts`: Observa estado de usuario Supabase.
+  - `useGpsTracking.ts`: Manejo de geolocalización.
+  - `useDemoMode.ts`: Simulación de ruta demo.
+  - `useNavigation.ts`: Cálculo de ruta y pasos en navegación.
+  - `usePlaceSearch.ts`: Búsqueda de lugares y resultados.
+  - `useTripRecording.ts`: Grabación de rutas y estadísticas.
+- `src/lib/`
+  - `auth.ts`: Funciones `signUp`, `signIn`, `signOut`, `getCurrentUser`.
+  - `supabase.ts`: Cliente Supabase.
+  - `trips.ts`: Persistencia local (`localStorage`).
+  - `trips-cloud.ts`: CRUD en Supabase para tabla `trips`.
+  - `migrateTrips.ts`: Migración rutas local→nube.
+  - `routing.ts`: Llamada a API de OpenRouteService.
+  - `utils.ts`: Funciones utilitarias (distancia, tiempo, etc.).
+  - `map-utils.ts`: Utilidades para mapas (distancia, bearing, rutas demo).
+- `src/types/trip.ts`: Tipos compartidos (`Position`, `SavedTrip`, etc.).
+
+## � env variables (obligatorio)
+
+Crea `.env.local` basado en `.env.example`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=<tu_supabase_url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<tu_supabase_anon_key>
+NEXT_PUBLIC_ORS_API_KEY=<tu_openrouteservice_api_key>
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Instalación y ejecución
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Accede en `http://localhost:3000`.
 
-## Learn More
+### Build y producción
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm run start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🧩 Flujo principal
 
-## Deploy on Vercel
+1. Loguearse en `/login`.
+2. En `/`, iniciar grabación, desplazarse y detener.
+3. Guardar ruta con título.
+4. Ver rutas en `/trips`, renombrar/eliminar.
+5. Ver detalle en `/trips/[id]` y seguir la ruta guardada.
+6. Migrar rutas locales a la base de datos con el botón en la home.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🧪 Recomendación de tests
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Unit tests a `src/lib` y `src/hooks`.
+- E2E con Playwright: login, grabación, guardado, listado y detalle.
+
+## 🧾 Notas
+
+- El mapa usa `react-leaflet` con `dynamic` para evitar SSR.
+- Soporta seguir rutas guardadas: desde `/trips` o `/trips/[id]`, inicia navegación siguiendo el trazo exacto.
+- `fonts` y estilo general están en `src/app/globals.css`.
+- `routing.ts` exige `NEXT_PUBLIC_ORS_API_KEY`, lanza error si falta.
+

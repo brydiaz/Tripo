@@ -4,12 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CircleMarker,
   MapContainer,
+  Marker,
   Popup,
   Polyline,
   TileLayer,
+  ZoomControl,
   useMap,
   useMapEvents,
 } from "react-leaflet";
+import { divIcon } from "leaflet";
 import { saveTrip } from "@/lib/trips";
 import { saveTripToCloud } from "@/lib/trips-cloud";
 import { getCurrentUser } from "@/lib/auth";
@@ -167,6 +170,23 @@ function getActiveStepIndex(
   return foundIndex === -1 ? steps.length - 1 : foundIndex;
 }
 
+function getBearing(from: Position, to: Position) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+  const lat1 = toRad(from[0]);
+  const lat2 = toRad(to[0]);
+  const dLng = toRad(to[1] - from[1]);
+
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+  const bearing = toDeg(Math.atan2(y, x));
+  return (bearing + 360) % 360;
+}
+
 function RecenterMap({ center }: { center: Position }) {
   const map = useMap();
 
@@ -189,7 +209,7 @@ function FollowUser({
   useEffect(() => {
     if (!position || !active) return;
 
-    map.setView(position, 17, {
+    map.setView(position, 18, {
       animate: true,
     });
   }, [position, active, map]);
@@ -258,6 +278,49 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
   const nextStep =
     activeStepIndex + 1 < navSteps.length ? navSteps[activeStepIndex + 1] : null;
 
+  const closestRouteIndex = useMemo(() => {
+    if (!position || navRoute.length === 0) return 0;
+    return findClosestRouteIndex(position, navRoute);
+  }, [position, navRoute]);
+
+  const passedRoute = useMemo(() => {
+    if (navRoute.length === 0) return [] as Position[];
+    return navRoute.slice(0, closestRouteIndex + 1);
+  }, [navRoute, closestRouteIndex]);
+
+  const remainingRoute = useMemo(() => {
+    if (navRoute.length === 0) return [] as Position[];
+    return navRoute.slice(closestRouteIndex);
+  }, [navRoute, closestRouteIndex]);
+
+  const heading = useMemo(() => {
+    if (remainingRoute.length > 1) {
+      return getBearing(remainingRoute[0], remainingRoute[1]);
+    }
+
+    if (route.length > 1) {
+      return getBearing(route[route.length - 2], route[route.length - 1]);
+    }
+
+    return 0;
+  }, [remainingRoute, route]);
+
+  const navigationMarkerIcon = useMemo(
+    () =>
+      divIcon({
+        className: "tripo-navigation-marker",
+        html: `
+          <div class="tripo-nav-pulse"></div>
+          <div class="tripo-nav-arrow-wrapper" style="transform: rotate(${heading}deg);">
+            <div class="tripo-nav-arrow"></div>
+          </div>
+        `,
+        iconSize: [42, 42],
+        iconAnchor: [21, 21],
+      }),
+    [heading]
+  );
+
   useEffect(() => {
     if (!isRecording || !startTime) return;
 
@@ -269,6 +332,30 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
       window.clearInterval(intervalId);
     };
   }, [isRecording, startTime]);
+
+  useEffect(() => {
+    if (!saveMessage) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setSaveMessage("");
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [saveMessage]);
+
+  useEffect(() => {
+    if (!error) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setError("");
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [error]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -444,32 +531,6 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
 
     void reroute();
   }, [position, destination, isDemoMode]);
-
-  useEffect(() => {
-  if (!saveMessage) return;
-
-  const timeoutId = window.setTimeout(() => {
-    setSaveMessage("");
-  }, 3000);
-
-  return () => {
-    window.clearTimeout(timeoutId);
-  };
-}, [saveMessage]);
-
-
-  useEffect(() => {
-    if (!saveMessage) return;
-
-    const timeoutId = window.setTimeout(() => {
-      setSaveMessage("");
-    }, 3000);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [saveMessage]);
-
 
   useEffect(() => {
     if (isDrivingMode) return;
@@ -716,6 +777,55 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
 
   return (
     <div className="relative h-full w-full">
+      <style>{`
+        .tripo-navigation-marker {
+          background: transparent;
+          border: none;
+        }
+
+        .tripo-nav-pulse {
+          position: absolute;
+          inset: 5px;
+          border-radius: 9999px;
+          background: rgba(45, 156, 219, 0.18);
+          box-shadow: 0 0 0 1px rgba(45, 156, 219, 0.18);
+          animation: tripoPulse 1.8s ease-out infinite;
+        }
+
+        .tripo-nav-arrow-wrapper {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: transform 220ms ease;
+        }
+
+        .tripo-nav-arrow {
+          width: 0;
+          height: 0;
+          border-left: 11px solid transparent;
+          border-right: 11px solid transparent;
+          border-bottom: 24px solid #2d9cdb;
+          filter: drop-shadow(0 4px 10px rgba(45, 156, 219, 0.45));
+        }
+
+        @keyframes tripoPulse {
+          0% {
+            transform: scale(0.8);
+            opacity: 0.75;
+          }
+          70% {
+            transform: scale(1.25);
+            opacity: 0;
+          }
+          100% {
+            transform: scale(1.25);
+            opacity: 0;
+          }
+        }
+      `}</style>
+
       <MapContainer
         center={currentCenter}
         zoom={zoom}
@@ -729,19 +839,26 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
           subdomains={["a", "b", "c", "d"]}
         />
 
+        <ZoomControl position="bottomright" />
         <RecenterMap center={currentCenter} />
         <FollowUser position={position} active={isDrivingMode} />
         <MapClickHandler onClick={handleMapClick} />
 
-        <CircleMarker
-          center={currentCenter}
-          radius={10}
-          pathOptions={{ color: isDemoMode ? "#f59e0b" : "#27AE60" }}
-        >
-          <Popup>
-            {isDemoMode ? "Ubicación simulada (modo demo)" : "Tu ubicación actual"}
-          </Popup>
-        </CircleMarker>
+        {isDrivingMode && position ? (
+          <Marker position={position} icon={navigationMarkerIcon}>
+            <Popup>Tu posición actual</Popup>
+          </Marker>
+        ) : (
+          <CircleMarker
+            center={currentCenter}
+            radius={10}
+            pathOptions={{ color: isDemoMode ? "#f59e0b" : "#27AE60" }}
+          >
+            <Popup>
+              {isDemoMode ? "Ubicación simulada (modo demo)" : "Tu ubicación actual"}
+            </Popup>
+          </CircleMarker>
+        )}
 
         {destination && (
           <CircleMarker
@@ -756,11 +873,24 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         )}
 
         {route.length > 1 && (
-          <Polyline positions={route} pathOptions={{ color: "#2D9CDB" }} />
+          <Polyline
+            positions={route}
+            pathOptions={{ color: "#2D9CDB", weight: 5, opacity: 0.85 }}
+          />
         )}
 
-        {navRoute.length > 1 && (
-          <Polyline positions={navRoute} pathOptions={{ color: "#F59E0B" }} />
+        {passedRoute.length > 1 && (
+          <Polyline
+            positions={passedRoute}
+            pathOptions={{ color: "#2D9CDB", weight: 7, opacity: 0.95 }}
+          />
+        )}
+
+        {remainingRoute.length > 1 && (
+          <Polyline
+            positions={remainingRoute}
+            pathOptions={{ color: "#F59E0B", weight: 7, opacity: 0.95 }}
+          />
         )}
       </MapContainer>
 

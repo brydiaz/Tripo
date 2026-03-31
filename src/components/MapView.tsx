@@ -230,10 +230,13 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
   const [isRouting, setIsRouting] = useState(false);
   const [destination, setDestination] = useState<Position | null>(null);
   const [isDrivingMode, setIsDrivingMode] = useState(false);
+  const [isDevPanelOpen, setIsDevPanelOpen] = useState(false);
 
   const demoIndexRef = useRef(0);
   const demoDestinationIndexRef = useRef<number | null>(null);
   const lastRouteTimeRef = useRef(0);
+
+  const isDevEnvironment = process.env.NODE_ENV !== "production";
 
   const defaultCenter: Position = [9.9281, -84.0907];
   const currentCenter = position ?? defaultCenter;
@@ -664,12 +667,13 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         style={{ height: "100%", width: "100%" }}
       >
         <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          subdomains={["a", "b", "c", "d"]}
         />
 
         <RecenterMap center={currentCenter} />
-        <FollowUser position={position} active={!!destination} />
+        <FollowUser position={position} active={isDrivingMode} />
         <MapClickHandler onClick={handleMapClick} />
 
         <CircleMarker
@@ -703,53 +707,66 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         )}
       </MapContainer>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[900] p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="pointer-events-auto rounded-2xl border border-white/10 bg-black/45 px-4 py-3 backdrop-blur-md shadow-[0_12px_30px_rgba(0,0,0,0.28)]">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">
-              Estado
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  isRecording
-                    ? "bg-[#27AE60] shadow-[0_0_12px_rgba(39,174,96,0.8)]"
-                    : isDemoMode
-                    ? "bg-[#f59e0b] shadow-[0_0_12px_rgba(245,158,11,0.8)]"
-                    : "bg-[#2D9CDB] shadow-[0_0_12px_rgba(45,156,219,0.8)]"
-                }`}
-              />
-              <p className="text-sm font-medium text-white">
-                {isRecording
-                  ? "Grabando recorrido"
-                  : isDemoMode
-                  ? "Modo demo activo"
-                  : "GPS activo"}
-              </p>
-            </div>
-          </div>
+      {isDevEnvironment && (
+        <div className="pointer-events-none absolute right-4 top-4 z-[950]">
+          <div className="flex flex-col items-end gap-3">
+            {isDevPanelOpen && (
+              <div className="pointer-events-auto w-[260px] rounded-[24px] border border-white/10 bg-black/70 p-4 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/45">
+                  Herramientas DEV
+                </p>
 
-          <div className="pointer-events-auto flex gap-2">
-            <button
-              onClick={handleToggleDemoMode}
-              className={`rounded-2xl border px-4 py-3 text-sm font-semibold backdrop-blur-md transition ${
-                isDemoMode
-                  ? "border-[#f59e0b]/30 bg-[#f59e0b]/20 text-[#ffd08a]"
-                  : "border-white/10 bg-black/45 text-white/85 hover:bg-black/55"
-              }`}
-            >
-              {isDemoMode ? "Desactivar demo" : "Modo demo"}
-            </button>
+                <div className="mt-3 rounded-2xl bg-white/6 p-3">
+                  <p className="text-xs text-white/55">Estado</p>
+                  <p className="mt-1 text-sm font-semibold text-white">
+                    {isRecording
+                      ? "Grabando recorrido"
+                      : isDemoMode
+                      ? "Modo demo activo"
+                      : "GPS activo"}
+                  </p>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-white/60">
+                  <div className="rounded-xl bg-white/6 p-2">
+                    secure: {String(secureInfo.secure)}
+                  </div>
+                  <div className="rounded-xl bg-white/6 p-2">
+                    geo: {String(secureInfo.geo)}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    onClick={handleToggleDemoMode}
+                    className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                      isDemoMode
+                        ? "bg-[#f59e0b]/20 text-[#ffd08a]"
+                        : "bg-white/10 text-white hover:bg-white/15"
+                    }`}
+                  >
+                    {isDemoMode ? "Desactivar demo" : "Modo demo"}
+                  </button>
+
+                  <button
+                    onClick={handleStartNavigation}
+                    className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+                  >
+                    {isRouting ? "Calculando..." : "Probar navegación"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <button
-              onClick={handleStartNavigation}
-              className="rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-sm font-semibold text-white/85 backdrop-blur-md transition hover:bg-black/55"
+              onClick={() => setIsDevPanelOpen((prev) => !prev)}
+              className="pointer-events-auto rounded-full border border-white/10 bg-black/60 px-4 py-3 text-sm font-bold text-white backdrop-blur-xl shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
             >
-              {isRouting ? "Calculando..." : "Probar navegación"}
+              DEV
             </button>
           </div>
         </div>
-      </div>
+      )}
 
       {error && (
         <div className="absolute left-4 right-4 top-24 z-[950] rounded-2xl border border-red-400/20 bg-red-500/15 px-4 py-3 text-sm text-red-200 backdrop-blur-md">
@@ -763,155 +780,153 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         </div>
       )}
 
-      {!isDrivingMode && (
-        <>
-          <div className="absolute left-4 right-4 top-40 z-[900] text-center text-xs text-white/65">
-            {isDemoMode
-              ? "Modo demo: toca el mapa para probar navegación simulada 🚗"
-              : "Toca el mapa para elegir un destino 📍"}
-          </div>
+      
 
-          <div className="absolute inset-x-0 bottom-0 z-[900] p-4">
-            <div className="rounded-[28px] border border-white/10 bg-black/45 p-4 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+      <div className="absolute inset-x-0 bottom-0 z-[1000] p-4">
+        {isDrivingMode ? (
+          <div className="relative">
+            <div className="rounded-[28px] border border-white/10 bg-black/55 p-4 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-white/45">
+                Navegación activa
+              </p>
+
+              <h2 className="mt-2 text-lg font-bold text-white">
+                {currentStep?.instruction ?? "Sigue la ruta"}
+              </h2>
+
               {currentStep && (
-                <div className="mb-4 rounded-2xl bg-[#F59E0B]/16 p-4 text-white">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">
-                    Instrucción actual
-                  </p>
-                  <p className="mt-2 text-base font-semibold">
-                    {currentStep.instruction}
-                  </p>
-                  <div className="mt-2 flex items-center justify-between text-sm text-white/75">
-                    <span>{Math.max(1, Math.round(currentStep.distance))} m</span>
-                    <span>{formatNavMinutes(currentStep.duration)} min</span>
-                  </div>
-
-                  {nextStep && (
-                    <p className="mt-3 text-xs text-white/60">
-                      Después: {nextStep.instruction}
-                    </p>
-                  )}
-                </div>
+                <p className="mt-1 text-sm text-white/70">
+                  {Math.round(currentStep.distance)} m
+                </p>
               )}
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-2xl bg-white/6 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/45">
-                    Tiempo
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-white">
-                    {formatElapsedTime(elapsedTime)}
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-white/10 p-3 text-center text-white">
+                  <p className="text-xs text-white/55">Tiempo restante</p>
+                  <p className="mt-1 text-base font-semibold">
+                    {Math.ceil(navDuration / 60)} min
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-white/6 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/45">
-                    Distancia
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-white">
-                    {(distance / 1000).toFixed(2)} km
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-white/6 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/45">
-                    Velocidad
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-white">
-                    {(speed * 3.6).toFixed(1)} km/h
+                <div className="rounded-2xl bg-white/10 p-3 text-center text-white">
+                  <p className="text-xs text-white/55">Distancia</p>
+                  <p className="mt-1 text-base font-semibold">
+                    {(navDistance / 1000).toFixed(2)} km
                   </p>
                 </div>
               </div>
 
-              {navRoute.length > 0 && (
-                <div className="mt-4 rounded-2xl bg-[#F59E0B]/12 p-3 text-sm text-white/90">
-                  <div className="flex items-center justify-between gap-3">
-                    <span>
-                      Ruta estimada: {(navDistance / 1000).toFixed(2)} km ·{" "}
-                      {Math.ceil(navDuration / 60)} min
-                      {isDemoMode ? " · demo" : ""}
-                    </span>
-
-                    <button
-                      onClick={handleClearNavigation}
-                      className="rounded-xl bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15"
-                    >
-                      Limpiar
-                    </button>
-                  </div>
-                </div>
+              {nextStep && (
+                <p className="mt-3 text-xs text-white/55">
+                  Después: {nextStep.instruction}
+                </p>
               )}
 
-              <button
-                onClick={handleToggleRecording}
-                className={`mt-4 w-full rounded-2xl px-5 py-4 text-base font-semibold text-white shadow-[0_12px_30px_rgba(0,0,0,0.25)] transition ${
-                  isRecording
-                    ? "bg-[#27AE60] hover:bg-[#229954]"
-                    : "bg-[#2D9CDB] hover:bg-[#238ac7]"
-                }`}
-              >
-                {isRecording ? "Detener grabación" : "Iniciar grabación"}
-              </button>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleToggleRecording}
+                  className={`rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
+                    isRecording
+                      ? "bg-[#27AE60] hover:bg-[#229954]"
+                      : "bg-[#2D9CDB] hover:bg-[#238ac7]"
+                  }`}
+                >
+                  {isRecording ? "● Grabando" : "Grabar Ruta"}
+                </button>
 
-              <div className="mt-3 flex items-center justify-between text-[11px] text-white/40">
-                <span>secure: {String(secureInfo.secure)}</span>
-                <span>geo: {String(secureInfo.geo)}</span>
-                <span>demo: {String(isDemoMode)}</span>
-                <span>puntos: {route.length}</span>
+                <button
+                  onClick={handleClearNavigation}
+                  className="rounded-2xl bg-red-500/80 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Finalizar
+                </button>
               </div>
             </div>
           </div>
-        </>
-      )}
+        ) : (
+          <div className="rounded-[28px] border border-white/10 bg-black/45 p-4 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+            {!isDrivingMode && currentStep && (
+              <div className="mb-4 rounded-2xl bg-[#F59E0B]/16 p-4 text-white">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/55">
+                  Instrucción actual
+                </p>
+                <p className="mt-2 text-base font-semibold">
+                  {currentStep.instruction}
+                </p>
+                <div className="mt-2 flex items-center justify-between text-sm text-white/75">
+                  <span>{Math.max(1, Math.round(currentStep.distance))} m</span>
+                  <span>{formatNavMinutes(currentStep.duration)} min</span>
+                </div>
 
-      {isDrivingMode && (
-        <div className="absolute inset-0 z-[1200] flex flex-col justify-between bg-black/80 p-6 backdrop-blur-xl">
-          <div className="mt-10 text-center text-white">
-            <p className="text-xs uppercase tracking-widest text-white/50">
-              Navegando
-            </p>
-
-            <h1 className="mt-4 text-3xl font-bold">
-              {currentStep?.instruction ?? "Sigue la ruta"}
-            </h1>
-
-            {currentStep && (
-              <p className="mt-3 text-lg text-white/70">
-                {Math.round(currentStep.distance)} m
-              </p>
+                {nextStep && (
+                  <p className="mt-3 text-xs text-white/60">
+                    Después: {nextStep.instruction}
+                  </p>
+                )}
+              </div>
             )}
 
-            {nextStep && (
-              <p className="mt-4 text-sm text-white/50">
-                Después: {nextStep.instruction}
-              </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-2xl bg-white/6 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-white/45">
+                  Tiempo
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {formatElapsedTime(elapsedTime)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white/6 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-white/45">
+                  Distancia
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {(distance / 1000).toFixed(2)} km
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white/6 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-white/45">
+                  Velocidad
+                </p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {(speed * 3.6).toFixed(1)} km/h
+                </p>
+              </div>
+            </div>
+
+            {navRoute.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-[#F59E0B]/12 p-3 text-sm text-white/90">
+                <div className="flex items-center justify-between gap-3">
+                  <span>
+                    Ruta estimada: {(navDistance / 1000).toFixed(2)} km ·{" "}
+                    {Math.ceil(navDuration / 60)} min
+                    {isDemoMode ? " · demo" : ""}
+                  </span>
+
+                  <button
+                    onClick={handleClearNavigation}
+                    className="rounded-xl bg-white/10 px-3 py-1 text-xs text-white/80 hover:bg-white/15"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
             )}
-          </div>
-
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-white/10 p-4 text-center text-white">
-              <p className="text-sm text-white/60">Tiempo restante</p>
-              <p className="text-xl font-semibold">
-                {Math.ceil(navDuration / 60)} min
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-white/10 p-4 text-center text-white">
-              <p className="text-sm text-white/60">Distancia</p>
-              <p className="text-xl font-semibold">
-                {(navDistance / 1000).toFixed(2)} km
-              </p>
-            </div>
 
             <button
-              onClick={handleClearNavigation}
-              className="w-full rounded-2xl bg-red-500/80 p-4 font-semibold text-white"
+              onClick={handleToggleRecording}
+              className={`mt-4 w-full rounded-2xl px-5 py-4 text-base font-semibold text-white shadow-[0_12px_30px_rgba(0,0,0,0.25)] transition ${
+                isRecording
+                  ? "bg-[#27AE60] hover:bg-[#229954]"
+                  : "bg-[#2D9CDB] hover:bg-[#238ac7]"
+              }`}
             >
-              Finalizar navegación
+              {isRecording ? "Detener grabación" : "Iniciar grabación"}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {isSaveModalOpen && (
         <div className="absolute inset-0 z-[1300] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm">

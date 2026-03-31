@@ -13,7 +13,8 @@ import {
 import { saveTrip } from "@/lib/trips";
 import { saveTripToCloud } from "@/lib/trips-cloud";
 import { getCurrentUser } from "@/lib/auth";
-import { getDrivingRoute, NavigationStep } from "@/lib/routing";
+import { getRoute, searchPlaces, PlaceResult } from "@/lib/geo";
+import { NavigationStep } from "@/lib/routing";
 import { Position } from "@/types/trip";
 
 type MapViewProps = {
@@ -232,9 +233,16 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
   const [isDrivingMode, setIsDrivingMode] = useState(false);
   const [isDevPanelOpen, setIsDevPanelOpen] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   const demoIndexRef = useRef(0);
   const demoDestinationIndexRef = useRef<number | null>(null);
   const lastRouteTimeRef = useRef(0);
+  const searchRequestIdRef = useRef(0);
 
   const isDevEnvironment = process.env.NODE_ENV !== "production";
 
@@ -422,7 +430,7 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
     const reroute = async () => {
       try {
         setIsRouting(true);
-        const result = await getDrivingRoute(position, destination);
+        const result = await getRoute(position, destination);
         setNavRoute(result.coordinates);
         setNavDistance(result.distanceMeters);
         setNavDuration(result.durationSeconds);
@@ -434,8 +442,77 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
       }
     };
 
-    reroute();
+    void reroute();
   }, [position, destination, isDemoMode]);
+
+  useEffect(() => {
+  if (!saveMessage) return;
+
+  const timeoutId = window.setTimeout(() => {
+    setSaveMessage("");
+  }, 3000);
+
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
+}, [saveMessage]);
+
+
+  useEffect(() => {
+    if (!saveMessage) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setSaveMessage("");
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [saveMessage]);
+
+
+  useEffect(() => {
+    if (isDrivingMode) return;
+
+    const query = searchQuery.trim();
+
+    if (!query) {
+      setSearchResults([]);
+      setSearchError("");
+      setIsSearching(false);
+      return;
+    }
+
+    const requestId = ++searchRequestIdRef.current;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setIsSearching(true);
+        setSearchError("");
+        const results = await searchPlaces(query);
+
+        if (requestId !== searchRequestIdRef.current) return;
+
+        setSearchResults(results);
+        setIsSearchOpen(true);
+
+        if (results.length === 0) {
+          setSearchError("No encontramos resultados para esa búsqueda.");
+        }
+      } catch {
+        if (requestId !== searchRequestIdRef.current) return;
+        setSearchResults([]);
+        setSearchError("No se pudo completar la búsqueda.");
+      } finally {
+        if (requestId === searchRequestIdRef.current) {
+          setIsSearching(false);
+        }
+      }
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchQuery, isDrivingMode]);
 
   const secureInfo = useMemo(() => {
     if (typeof window === "undefined") {
@@ -450,6 +527,72 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
       geo: !!navigator.geolocation,
     };
   }, []);
+
+  const calculateRouteToDestination = async (dest: Position) => {
+    if (!position) {
+      setSaveMessage("Aún no hay ubicación disponible.");
+      return;
+    }
+
+    try {
+      setIsRouting(true);
+      setSaveMessage("");
+
+      if (isDemoMode) {
+        const currentIndex = demoIndexRef.current;
+        const destinationIndex = findNearestDemoIndex(dest);
+        const demoDestination = DEMO_ROUTE[destinationIndex];
+
+        demoDestinationIndexRef.current = destinationIndex;
+        setDestination(demoDestination);
+
+        const simulatedRoute = buildDemoNavigationRoute(
+          currentIndex,
+          destinationIndex
+        );
+        const simulatedDistance = getPathDistance(simulatedRoute);
+        const simulatedDurationSeconds = simulatedDistance / (DEMO_SPEED_KMH / 3.6);
+        const simulatedSteps = buildDemoSteps(simulatedRoute);
+
+        setNavRoute(simulatedRoute);
+        setNavDistance(simulatedDistance);
+        setNavDuration(simulatedDurationSeconds);
+        setNavSteps(simulatedSteps);
+        setIsDrivingMode(true);
+        setSaveMessage("Ruta demo calculada correctamente.");
+        return;
+      }
+
+      setDestination(dest);
+      lastRouteTimeRef.current = Date.now();
+
+      const result = await getRoute(position, dest);
+
+      setNavRoute(result.coordinates);
+      setNavDistance(result.distanceMeters);
+      setNavDuration(result.durationSeconds);
+      setNavSteps(result.steps);
+      setIsDrivingMode(true);
+      setSaveMessage("Ruta calculada correctamente.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Error calculando ruta.";
+      setSaveMessage(message);
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
+  const handleSelectSearchResult = async (result: PlaceResult) => {
+    const dest: Position = [result.lat, result.lng];
+
+    setSearchQuery(result.name);
+    setSearchResults([]);
+    setSearchError("");
+    setIsSearchOpen(false);
+
+    await calculateRouteToDestination(dest);
+  };
 
   const handleToggleRecording = () => {
     if (!isRecording) {
@@ -534,6 +677,9 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
     setDestination(null);
     setIsDrivingMode(false);
     demoDestinationIndexRef.current = null;
+    setSearchResults([]);
+    setSearchError("");
+    setIsSearchOpen(false);
     setIsDemoMode((prev) => !prev);
   };
 
@@ -543,109 +689,19 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
       return;
     }
 
-    try {
-      setIsRouting(true);
-      setSaveMessage("");
-
-      if (isDemoMode) {
-        const fixedDemoDestinationIndex = DEMO_ROUTE.length - 1;
-        const fixedDemoDestination = DEMO_ROUTE[fixedDemoDestinationIndex];
-        const currentIndex = demoIndexRef.current;
-
-        demoDestinationIndexRef.current = fixedDemoDestinationIndex;
-        setDestination(fixedDemoDestination);
-
-        const simulatedRoute = buildDemoNavigationRoute(
-          currentIndex,
-          fixedDemoDestinationIndex
-        );
-        const simulatedDistance = getPathDistance(simulatedRoute);
-        const simulatedDurationSeconds = simulatedDistance / (DEMO_SPEED_KMH / 3.6);
-        const simulatedSteps = buildDemoSteps(simulatedRoute);
-
-        setNavRoute(simulatedRoute);
-        setNavDistance(simulatedDistance);
-        setNavDuration(simulatedDurationSeconds);
-        setNavSteps(simulatedSteps);
-        setIsDrivingMode(true);
-        setSaveMessage("Ruta demo calculada correctamente.");
-        return;
-      }
-
-      const fixedDestination: Position = [9.9355, -84.0796];
-      setDestination(fixedDestination);
-      lastRouteTimeRef.current = Date.now();
-
-      const result = await getDrivingRoute(position, fixedDestination);
-
-      setNavRoute(result.coordinates);
-      setNavDistance(result.distanceMeters);
-      setNavDuration(result.durationSeconds);
-      setNavSteps(result.steps);
-      setIsDrivingMode(true);
-      setSaveMessage("Ruta calculada correctamente.");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "No se pudo calcular la ruta.";
-      setSaveMessage(message);
-    } finally {
-      setIsRouting(false);
-    }
-  };
-
-  const handleMapClick = async (dest: Position) => {
-    if (!position) {
-      setSaveMessage("Aún no hay ubicación disponible.");
+    if (isDemoMode) {
+      const fixedDemoDestinationIndex = DEMO_ROUTE.length - 1;
+      const fixedDemoDestination = DEMO_ROUTE[fixedDemoDestinationIndex];
+      await calculateRouteToDestination(fixedDemoDestination);
       return;
     }
 
-    try {
-      setIsRouting(true);
-      setSaveMessage("");
+    const fixedDestination: Position = [9.9355, -84.0796];
+    await calculateRouteToDestination(fixedDestination);
+  };
 
-      if (isDemoMode) {
-        const currentIndex = demoIndexRef.current;
-        const destinationIndex = findNearestDemoIndex(dest);
-        const demoDestination = DEMO_ROUTE[destinationIndex];
-
-        demoDestinationIndexRef.current = destinationIndex;
-        setDestination(demoDestination);
-
-        const simulatedRoute = buildDemoNavigationRoute(
-          currentIndex,
-          destinationIndex
-        );
-        const simulatedDistance = getPathDistance(simulatedRoute);
-        const simulatedDurationSeconds = simulatedDistance / (DEMO_SPEED_KMH / 3.6);
-        const simulatedSteps = buildDemoSteps(simulatedRoute);
-
-        setNavRoute(simulatedRoute);
-        setNavDistance(simulatedDistance);
-        setNavDuration(simulatedDurationSeconds);
-        setNavSteps(simulatedSteps);
-        setIsDrivingMode(true);
-        setSaveMessage("Ruta demo calculada correctamente.");
-        return;
-      }
-
-      setDestination(dest);
-      lastRouteTimeRef.current = Date.now();
-
-      const result = await getDrivingRoute(position, dest);
-
-      setNavRoute(result.coordinates);
-      setNavDistance(result.distanceMeters);
-      setNavDuration(result.durationSeconds);
-      setNavSteps(result.steps);
-      setIsDrivingMode(true);
-      setSaveMessage("Ruta calculada correctamente.");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Error calculando ruta.";
-      setSaveMessage(message);
-    } finally {
-      setIsRouting(false);
-    }
+  const handleMapClick = async (dest: Position) => {
+    await calculateRouteToDestination(dest);
   };
 
   const handleClearNavigation = () => {
@@ -663,6 +719,7 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
       <MapContainer
         center={currentCenter}
         zoom={zoom}
+        zoomControl={false}
         scrollWheelZoom={true}
         style={{ height: "100%", width: "100%" }}
       >
@@ -707,8 +764,66 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
         )}
       </MapContainer>
 
+      {!isDrivingMode && (
+        <div className="absolute left-4 right-4 top-4 z-[945]">
+          <div className="rounded-[24px] border border-white/10 bg-black/65 p-3 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSearchError("");
+                  setIsSearchOpen(true);
+                }}
+                onFocus={() => {
+                  if (searchResults.length > 0) {
+                    setIsSearchOpen(true);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setIsSearchOpen(false);
+                  }
+                }}
+                placeholder="Buscar destino"
+                className="flex-1 rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#2D9CDB]/50"
+              />
+
+              <div className="rounded-2xl bg-white/8 px-3 py-3 text-xs font-semibold text-white/70">
+                {isSearching ? "Buscando..." : "GPS"}
+              </div>
+            </div>
+
+            {searchError && (
+              <p className="mt-3 text-sm text-red-300">{searchError}</p>
+            )}
+
+            {isSearchOpen && searchResults.length > 0 && (
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-2xl border border-white/10 bg-white/6 p-2">
+                {searchResults.map((result, index) => (
+                  <button
+                    key={`${result.name}-${index}`}
+                    onClick={() => void handleSelectSearchResult(result)}
+                    className="block w-full rounded-xl px-3 py-3 text-left transition hover:bg-white/10"
+                  >
+                    <p className="text-sm font-medium text-white">
+                      {result.name}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-3 text-xs text-white/45">
+              También puedes tocar el mapa para elegir un destino.
+            </p>
+          </div>
+        </div>
+      )}
+
       {isDevEnvironment && (
-        <div className="pointer-events-none absolute right-4 top-4 z-[950]">
+        <div className="pointer-events-none absolute right-4 top-24 z-[950]">
           <div className="flex flex-col items-end gap-3">
             {isDevPanelOpen && (
               <div className="pointer-events-auto w-[260px] rounded-[24px] border border-white/10 bg-black/70 p-4 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
@@ -749,7 +864,7 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
                   </button>
 
                   <button
-                    onClick={handleStartNavigation}
+                    onClick={() => void handleStartNavigation()}
                     className="rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
                   >
                     {isRouting ? "Calculando..." : "Probar navegación"}
@@ -779,8 +894,6 @@ export default function MapView({ zoom = 16 }: MapViewProps) {
           {saveMessage}
         </div>
       )}
-
-      
 
       <div className="absolute inset-x-0 bottom-0 z-[1000] p-4">
         {isDrivingMode ? (
